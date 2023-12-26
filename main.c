@@ -3,9 +3,6 @@
 #include <time.h>
 #include <stdlib.h>
 
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
-
 #undef main
 
 typedef struct Pixel
@@ -18,6 +15,7 @@ typedef struct Pixel
 int width = 1000;
 int height = 1000;
 int persCorrect = 1;
+int rotate = 1;
 
 #define GET_PIXEL(x, y, aWidth, pixelSize, ptr) (((char*)ptr) + y * aWidth * pixelSize + x * pixelSize)
 
@@ -27,9 +25,6 @@ float* depthBuffer;
 mat2 triBarSolverMatrix;
 mat4 viewMatrix;
 mat4 modelMatrix;
-
-int textureWidth, textureHeight;
-uint8_t* textureData;
 
 void generateViewMatrix(vec3 camPos, vec3 lookPos, mat4* dstMatrix)
 {
@@ -70,7 +65,7 @@ void generateRotationMatrix(float rot, mat4* dstMatrix)
 	(*dstMatrix)[1][1] = cos(rot);
 }
 
-void drawLine(float x0, float x1, float y, vec4* vertices, vec2* uvs)
+void drawLine(float x0, float x1, float y, vec4* vertices, vec2* uvs, char texIndex)
 {
 	if (x0 > x1)
 	{
@@ -79,7 +74,7 @@ void drawLine(float x0, float x1, float y, vec4* vertices, vec2* uvs)
 		x1 = tmp;
 	}
 
-	for (int i = (int)x0; i < (int)(x1 + 1); i++)
+	for (int i = (int)x0 + 1; i < (int)(x1 + 1); i++)
 	{
 		float l1 = triBarSolverMatrix[0][0] * (i - vertices[2][0]) + triBarSolverMatrix[0][1] * (y - vertices[2][1]);
 		float l2 = triBarSolverMatrix[1][0] * (i - vertices[2][0]) + triBarSolverMatrix[1][1] * (y - vertices[2][1]);
@@ -107,7 +102,8 @@ void drawLine(float x0, float x1, float y, vec4* vertices, vec2* uvs)
 				interT = fmin(fmax(G1T / G2, 0.0f), 1.0f);
 			}
 
-			Pixel* color = (Pixel*)GET_PIXEL((int)(interS * (textureWidth - 1)), (int)(interT * (textureHeight - 1)), textureWidth, sizeof(Pixel), textureData);
+			Pixel* color = (Pixel*)GET_PIXEL((int)(interS * (textures[texIndex].width - 1)), (int)(interT * (textures[texIndex].height - 1)),
+				textures[texIndex].width, sizeof(Pixel), textures[texIndex].data);
 
 			*depthPtr = interZ;
 			Pixel* framePtr = (Pixel*)GET_PIXEL(i, (int)y, width, sizeof(Pixel), frameBuffer);
@@ -116,7 +112,7 @@ void drawLine(float x0, float x1, float y, vec4* vertices, vec2* uvs)
 	}
 }
 
-void fillFlatBottomTriangle(vec4 v1, vec4 v2, vec4 v3, vec4* vertices, vec2* uvs)
+void fillFlatBottomTriangle(vec4 v1, vec4 v2, vec4 v3, vec4* vertices, vec2* uvs, char texIndex)
 {
 	float invslp1 = (v2[0] - v1[0]) / (v2[1] - v1[1]);
 	float invslp2 = (v3[0] - v1[0]) / (v3[1] - v1[1]);
@@ -126,13 +122,13 @@ void fillFlatBottomTriangle(vec4 v1, vec4 v2, vec4 v3, vec4* vertices, vec2* uvs
 
 	for (int scanlineY = (int)v1[1]; scanlineY < (int)v2[1] + 1; scanlineY++)
 	{
-		drawLine(curx1, curx2, scanlineY, vertices, uvs);
+		drawLine(curx1, curx2, scanlineY, vertices, uvs, texIndex);
 		curx1 += invslp1;
 		curx2 += invslp2;
 	}
 }
 
-void fillFlatTopTriangle(vec4 v1, vec4 v2, vec4 v3, vec4* vertices, vec2* uvs)
+void fillFlatTopTriangle(vec4 v1, vec4 v2, vec4 v3, vec4* vertices, vec2* uvs, char texIndex)
 {
 	float invslp1 = (v3[0] - v1[0]) / (v3[1] - v1[1]);
 	float invslp2 = (v3[0] - v2[0]) / (v3[1] - v2[1]);
@@ -142,7 +138,7 @@ void fillFlatTopTriangle(vec4 v1, vec4 v2, vec4 v3, vec4* vertices, vec2* uvs)
 
 	for (int scanlineY = (int)v3[1]; scanlineY > (int)v1[1] - 1; scanlineY--)
 	{
-		drawLine(curx1, curx2, scanlineY, vertices, uvs);
+		drawLine(curx1, curx2, scanlineY, vertices, uvs, texIndex);
 		curx1 -= invslp1;
 		curx2 -= invslp2;
 	}
@@ -174,6 +170,7 @@ void drawTriangle(int index)
 {
 	vec4 newVertices[3];
 	vec2 newUVs[3];
+	int texIndex = textureIndices[index];
 
 	for (int i = 0; i < 3; i++)
 	{
@@ -203,11 +200,11 @@ void drawTriangle(int index)
 
 	if (newVertices[1][1] == newVertices[2][1])
 	{
-		fillFlatBottomTriangle(newVertices[0], newVertices[1], newVertices[2], newVertices, newUVs);
+		fillFlatBottomTriangle(newVertices[0], newVertices[1], newVertices[2], newVertices, newUVs, texIndex);
 	}
 	else if (newVertices[0][1] == newVertices[1][1])
 	{
-		fillFlatTopTriangle(newVertices[0], newVertices[1], newVertices[2], newVertices, newUVs);
+		fillFlatTopTriangle(newVertices[0], newVertices[1], newVertices[2], newVertices, newUVs, texIndex);
 	}
 	else
 	{
@@ -215,16 +212,14 @@ void drawTriangle(int index)
 			newVertices[0][0] + (newVertices[2][0] - newVertices[0][0]) / (newVertices[2][1] - newVertices[0][1]) * (newVertices[1][1] - newVertices[0][1]), newVertices[1][1]
 		};
 
-		fillFlatBottomTriangle(newVertices[0], newVertices[1], v4, newVertices, newUVs);
-		fillFlatTopTriangle(newVertices[1], v4, newVertices[2], newVertices, newUVs);
+		fillFlatBottomTriangle(newVertices[0], newVertices[1], v4, newVertices, newUVs, texIndex);
+		fillFlatTopTriangle(newVertices[1], v4, newVertices[2], newVertices, newUVs, texIndex);
 	}
 }
 
 int main(int argc, char* argv[])
 {
 	initData();
-
-	textureData = stbi_load("../../../assets/smiley.png", &textureWidth, &textureHeight, NULL, 3);
 
 	// enable vsync
 	//SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
@@ -239,6 +234,7 @@ int main(int argc, char* argv[])
 	int lastMouse[2] = { 0, 0 };
 	int diff[2];
 
+	int dt = 0;
 	float rot = 0.0f;
 	int running = 1;
 	int click = 0;
@@ -257,6 +253,10 @@ int main(int argc, char* argv[])
 				if (event.key.keysym.sym == SDLK_s)
 				{
 					persCorrect ^= 1;
+				}
+				else if (event.key.keysym.sym == SDLK_r)
+				{
+					rotate ^= 1;
 				}
 				break;
 			case SDL_MOUSEBUTTONDOWN:
@@ -278,8 +278,17 @@ int main(int argc, char* argv[])
 				lastMouse[1] = event.motion.y;
 				if (click)
 				{
-					camRot[0] += diff[1] * 0.01f;
-					camRot[1] += diff[0] * 0.01f;
+					camRot[0] += fmod(diff[1] * 0.01f, GLM_PI);
+					camRot[1] += fmod(diff[0] * 0.01f, GLM_PI);
+
+					if (camRot[0] > GLM_PI / 2.0f)
+					{
+						camRot[0] = GLM_PI / 2.0f - 0.0001f;
+					}
+					else if (camRot[0] < -GLM_PI / 2.0f)
+					{
+						camRot[0] = -GLM_PI / 2.0f + 0.0001f;
+					}
 				}
 				break;
 			default:
@@ -307,7 +316,10 @@ int main(int argc, char* argv[])
 		generateViewMatrix(camPos, (vec3){ 0, 0, 0 }, &viewMatrix);
 		generateRotationMatrix(rot, &modelMatrix);
 
-		rot = SDL_GetTicks() * 0.001f;
+		if (rotate)
+		{
+			rot += 0.001f * dt;
+		}
 
 		for (int i = 0; i < numTris; i++)
 		{
@@ -318,7 +330,8 @@ int main(int argc, char* argv[])
 		SDL_RenderCopy(renderer, framebufferTexture, NULL, NULL);
 		SDL_RenderPresent(renderer);
 		
-		printf("Frame time: %d\n", SDL_GetTicks() - time);
+		dt = SDL_GetTicks() - time;
+		printf("Frame time: %d\n", dt);
 	}
 
 	return 0;
