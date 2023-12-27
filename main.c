@@ -12,8 +12,8 @@ typedef struct Pixel
 	uint8_t b;
 } Pixel;
 
-int width = 1000;
-int height = 1000;
+int width = 800;
+int height = 800;
 int persCorrect = 1;
 int rotate = 1;
 
@@ -33,7 +33,7 @@ void generateViewMatrix(vec3 camPos, vec3 lookPos, mat4* dstMatrix)
 	glm_normalize(forward);
 
 	vec3 right;
-	glm_vec3_cross(forward, (vec3){ 0, 1, 0 }, right);
+	glm_vec3_cross(forward, (vec3){ 0, 0, 1 }, right);
 	glm_normalize(right);
 
 	vec3 up;
@@ -222,15 +222,15 @@ int main(int argc, char* argv[])
 	initData();
 
 	// enable vsync
-	//SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
+	SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
 	SDL_Init(SDL_INIT_VIDEO);
 	SDL_Window* window = SDL_CreateWindow("SDL2 Window", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, 0);
 	SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, 0);
-	
+
 	SDL_Texture* framebufferTexture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STREAMING, width, height);
 	depthBuffer = malloc(sizeof(float) * width * height);
 
-	float camRot[2] = { 0.0f, 1.0f };
+	float camRot[2] = { 0.0f, 0.0f };
 	int lastMouse[2] = { 0, 0 };
 	int diff[2];
 
@@ -238,6 +238,7 @@ int main(int argc, char* argv[])
 	float rot = 0.0f;
 	int running = 1;
 	int click = 0;
+    float dist = 5.0f;
 	while (running)
 	{
 		int time = SDL_GetTicks();
@@ -291,6 +292,17 @@ int main(int argc, char* argv[])
 					}
 				}
 				break;
+            case SDL_MOUSEWHEEL:
+                dist += event.wheel.y * 0.1f; 
+				if (dist < 4.0f)
+				{
+					dist = 4.0f;
+				}
+                else if (dist > 20.0f)
+                {
+                    dist = 20.0f;
+                }
+                break;
 			default:
 				break;
 			}
@@ -306,12 +318,12 @@ int main(int argc, char* argv[])
 			depthBuffer[i] = (float)1e20;
 		}
 
-		vec3 camPos = { 0.0f, 0.0f, 1.0f };
-		glm_vec3_rotate(camPos, camRot[0], (vec3){ 1, 0, 0 });
-		glm_vec3_rotate(camPos, -camRot[1], (vec3){ 0, 1, 0 });
+		vec3 camPos = { 0.0f, 1.0f, 0.0f };
+		glm_vec3_rotate(camPos, -camRot[0], (vec3){ 1, 0, 0 });
+		glm_vec3_rotate(camPos, -camRot[1], (vec3){ 0, 0, 1 });
 
 		glm_vec3_normalize(camPos);
-		glm_vec3_mul(camPos, (vec3){7.0f, 7.0f, 7.0f}, camPos);
+		glm_vec3_mul(camPos, (vec3){dist, dist, dist}, camPos);
 
 		generateViewMatrix(camPos, (vec3){ 0, 0, 0 }, &viewMatrix);
 		generateRotationMatrix(rot, &modelMatrix);
@@ -331,7 +343,7 @@ int main(int argc, char* argv[])
 		SDL_RenderPresent(renderer);
 		
 		dt = SDL_GetTicks() - time;
-		printf("Frame time: %d\n", dt);
+		//printf("Frame time: %d\n", dt);
 	}
 
 	return 0;
