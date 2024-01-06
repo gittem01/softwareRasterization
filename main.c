@@ -293,7 +293,7 @@ int main(int argc, char* argv[])
 				}
 				break;
             case SDL_MOUSEWHEEL:
-                dist += event.wheel.y * 0.1f; 
+                dist -= event.wheel.y * 0.5f; 
 				if (dist < 4.0f)
 				{
 					dist = 4.0f;
